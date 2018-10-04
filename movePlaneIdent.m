@@ -57,7 +57,7 @@ if nargin > 6
         constraints = settings.constraints;
     end
     if isfield(settings,'optOptions')
-        optOptions = settings.optimOptions();
+        optOptions = settings.optOptions;
     end
 end
 if winSize > N

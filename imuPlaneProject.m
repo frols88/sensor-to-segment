@@ -22,7 +22,13 @@ function [R,acc,gyr,mag,quat] = imuPlaneProject(acc,gyr,mag,quat,zp,tp,time)
 % quat          Quaternions relate the new projected sensor frames to 
 %               the global frame.
 % 
-N = size(acc,2);
+if ~isempty(acc)
+    N = size(acc,2);
+elseif ~isempty(gyr)
+    N = size(gyr,2);
+else
+    error('Both acc and gyr cannot be empty.')
+end
 Np = length(tp);
 R = zeros(3,3,Np);
 for k = 1:Np
@@ -47,8 +53,16 @@ for k = 1:N
         j = find(abs(tp-time(k)) == min(abs(tp - time(k))));
     end
     Rj = reshape(R(:,:,j),[3 3]);
-    acc(:,k) = Rj*acc(:,k);
-    gyr(:,k) = Rj*gyr(:,k);
-    mag(:,k) = Rj*mag(:,k);
-    quat(:,k) = mat2quat(Rj*quat2mat(quat(:,k)));
+    if ~isempty(acc)
+        acc(:,k) = Rj*acc(:,k);
+    end
+    if ~isempty(gyr)
+        gyr(:,k) = Rj*gyr(:,k);
+    end
+    if ~isempty(mag)
+        mag(:,k) = Rj*mag(:,k);
+    end
+    if ~isempty(quat)
+        quat(:,k) = mat2quat(Rj*quat2mat(quat(:,k)));
+    end 
 end
