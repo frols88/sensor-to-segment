@@ -1,0 +1,6 @@
+2018-10-22
+-Added functionality to jointPosIdent to have differentiated gyro measurements as input
+-Added functionality to jointPosIdent and movePlaneIdent to include a preset initial guess x0 in settings
+-Added Huber regression cost function jointPos3dHuberCost.m
+-Added implementation of BFGS optimization method to solve the Huber regression problem
+-Added functionality to weight samples differently by including a weight vector w in the settings to jointPosIndent

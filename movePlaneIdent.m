@@ -1,4 +1,4 @@
-function [nhat,that,etot,xtraj] = movePlaneIdent(acc1,acc2,gyr1,gyr2,quat1,quat2,settings)
+function [nhat,xhat,that,etot,xtraj] = movePlaneIdent(imus,settings)
 %% Plane of movement identification
 % DESCRIPTION:
 % Identify the normal vectors to the planes of movement of two IMU:s
@@ -29,10 +29,10 @@ function [nhat,that,etot,xtraj] = movePlaneIdent(acc1,acc2,gyr1,gyr2,quat1,quat2
 % optOptions    - Optimization options, see optimOptions.m
     
 %% Initialzie
-if ~isempty(acc1)
-    N = size(acc1,2);
-elseif ~isempty(gyr1)
-    N = size(gyr1,2);
+if ~isempty(imus.acc1)
+    N = size(imus.acc1,2);
+elseif ~isempty(imus.gyr1)
+    N = size(imus.gyr1,2);
 else
     error('Both acc1 or gyr1 cannot be empty.')
 end
@@ -43,7 +43,9 @@ overlap = 0; % Overlap ratio (Between 0 and 1)
 w = [1 1 1]; % Kinematic constraints weights
 constraints = [1 4]; % Active constraints
 optOptions = optimOptions(); % Optimization options
-if nargin > 6
+x0 = -pi + 2*pi*rand(4,1); % Initialize as uniformly random unit vectors
+loss = @(e) lossFunctions(e,'squared');
+if nargin > 1
     if isfield(settings,'winSize')
         winSize = settings.winSize;
     end
@@ -59,6 +61,12 @@ if nargin > 6
     if isfield(settings,'optOptions')
         optOptions = settings.optOptions;
     end
+    if isfield(settings,'x0')
+        x0 = settings.x0;
+    end
+    if isfield(settings,'loss')
+        loss = settings.loss;
+    end
 end
 if winSize > N
     error('Window size cannot be larger than N.')
@@ -73,8 +81,8 @@ window = 1:winSize;
 Nwin = floor((N-winSize)/(winSize-overlap))+1;
 
 %% Optimization
-x0 = -pi + 2*pi*rand(4,1); % Initialize as uniformly random unit vectors
 nhat = zeros(6,Nwin);
+xhat = zeros(4,Nwin);
 that = zeros(1,Nwin);
 xtraj = zeros(4,optOptions.maxSteps+1,Nwin);
 acc1j = [];
@@ -89,29 +97,38 @@ for j = 1:Nwin
     if j == Nwin
         jj = N-winSize+1:N;
     end
-    if ~isempty(acc1)
-        acc1j = acc1(:,jj);
+    if ~isempty(imus.acc1)
+        imuWin.acc1 = imus.acc1(:,jj);
     end
-    if ~isempty(acc2)
-        acc2j = acc2(:,jj);
+    if ~isempty(imus.acc2)
+        imuWin.acc2 = imus.acc2(:,jj);
     end
-    if ~isempty(gyr1)
-        gyr1j = gyr1(:,jj);
+    if ~isempty(imus.gyr1)
+        imuWin.gyr1 = imus.gyr1(:,jj);
     end
-    if ~isempty(gyr2)
-        gyr2j = gyr2(:,jj);
+    if ~isempty(imus.gyr2)
+        imuWin.gyr2 = imus.gyr2(:,jj);
     end
-    if ~isempty(quat1)
-        quat1j = quat1(:,jj);
+    if ~isempty(imus.quat1)
+        imuWin.quat1 = imus.quat1(:,jj);
     end
-    if ~isempty(quat2)
-        quat2j = quat2(:,jj);
-    end  
+    if ~isempty(imus.quat2)
+        imuWin.quat2 = imus.quat2(:,jj);
+    end
+    if isfield(imus,'wa')
+        imuWin.wa = imus.wa(jj);
+    end
+    if isfield(imus,'wg')
+        imuWin.wg = imus.wg(jj);
+    end
     
     % Optimize cost function
-    disp(['Identifying movement plane for samples ',num2str(jj(1)),':',num2str(jj(end)),'.'])
-    disp(['Active constraints: ',num2str(constraints)])
-    costFunc = @(x) movePlaneCost(x,acc1j,acc2j,gyr1j,gyr2j,quat1j,quat2j,w,constraints);
+%     disp(['Identifying movement plane for samples ',num2str(jj(1)),':',num2str(jj(end)),'.'])
+%     disp(['Active constraints: ',num2str(constraints)])
+    costFunc = @(x) movePlaneCost(x,imuWin,w,constraints,loss);
+%     [x,xtraj(:,:,j)] = optimBFGS(x0,costFunc,optOptions);
+%     [x,xtraj(:,:,j)] = optimGradientDescent(x0,costFunc,optOptions);
+%     x = lsqnonlin(costFunc,x0);
     [x,xtraj(:,:,j)] = optimGaussNewton(x0,costFunc,optOptions);
     [~,~,e] = costFunc(x); % Compute residuals for current x
 
@@ -119,7 +136,29 @@ for j = 1:Nwin
     n = [[cos(x(1))*cos(x(2)) cos(x(1))*sin(x(2)) sin(x(1))]'; ...
             [cos(x(3))*cos(x(4)) cos(x(3))*sin(x(4)) sin(x(3))]']; % Convert from spherical coordinates to unit vectors
     nhat(:,j) = n(:,end);
+    xhat(:,j) = x;
     that(:,j) = median(jj);
+    
+    % Identify joint center
+%     [x1,y1] = ortNormBasis(n(1:3));
+%     [x2,y2] = ortNormBasis(n(4:6));
+%     jointCenterCost = @(r) jointPos2dCost(r,[x1; x2],[y1; y2], imus);
+%     [r,~] = optimGaussNewton(zeros(4,1),jointCenterCost,optOptions);
+%     r1 = r(1)*x1 + r(2)*y1;
+%     r2 = r(3)*x2 + r(4)*y2;
+    
+    % Identify join axis given r
+%     costFunc = @(x) movePlaneCost(x,imuWin,w,constraints,loss,[r1;r2]);
+%     [x,xtraj(:,:,j)] = optimGaussNewton(x,costFunc,optOptions);
+%     [~,~,e] = costFunc(x); % Compute residuals for current x
+    
+    % Save results
+%     n = [[cos(x(1))*cos(x(2)) cos(x(1))*sin(x(2)) sin(x(1))]'; ...
+%             [cos(x(3))*cos(x(4)) cos(x(3))*sin(x(4)) sin(x(3))]']; % Convert from spherical coordinates to unit vectors
+%     nhat(:,j) = n(:,end);
+%     xhat(:,j) = x;
+%     that(:,j) = median(jj);
+    
     if ~exist('etot','var')
         etot = zeros(winSize,round(size(e,1)/winSize),Nwin);
     end
