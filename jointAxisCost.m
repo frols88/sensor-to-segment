@@ -131,10 +131,4 @@ for j = 1:Nr
     end
 end
 
-P = inv(J'*J);
-   
-% Normalize w.r.t. number of measurements
-% g = g/N;
-% J = J/N;
-% f = f/N;
-% e = e/N;
+P = inv(J'*J)*(f/(Na+Ng-4));
